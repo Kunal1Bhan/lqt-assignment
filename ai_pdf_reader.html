@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PDF Document Reader</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 2rem;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .upload-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            min-width: 300px;
+            height: fit-content;
+        }
+
+        .chat-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .upload-zone {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: linear-gradient(45deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+        }
+
+        .upload-zone:hover {
+            border-color: #764ba2;
+            background: linear-gradient(45deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            transform: translateY(-2px);
+        }
+
+        .upload-zone.dragover {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .file-list {
+            margin-top: 1.5rem;
+        }
+
+        .file-item {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.8rem 1rem;
+            margin: 0.5rem 0;
+            border-radius: 10px;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-status {
+            margin-left: 1rem;
+            padding: 0.2rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-processing {
+            background: #ffc107;
+            color: #856404;
+        }
+
+        .status-ready {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-error {
+            background: #dc3545;
+            color: white;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 0;
+            margin-bottom: 1rem;
+            min-height: 300px;
+        }
+
+        .message {
+            margin: 1rem 0;
+            padding: 1rem 1.5rem;
+            border-radius: 15px;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.ai {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-content {
+            line-height: 1.6;
+        }
+
+        .message-source {
+            margin-top: 0.8rem;
+            padding: 0.5rem;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #555;
+        }
+
+        .query-input-container {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
+        }
+
+        .query-input {
+            flex: 1;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .query-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .stats {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .no-docs-message {
+            text-align: center;
+            color: #666;
+            margin: 2rem 0;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+            }
+            
+            .header {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI-Powered PDF Document Reader</h1>
+    </div>
+
+    <div class="container">
+        <div class="upload-section">
+            <h2>📄 Document Upload</h2>
+            
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">📁</div>
+                <p><strong>Drop PDF files here</strong></p>
+                <p>or click to browse</p>
+                <input type="file" id="fileInput" class="file-input" accept=".pdf" multiple>
+            </div>
+
+            <div class="file-list" id="fileList"></div>
+
+            <div class="stats" id="stats" style="display: none;">
+                <div><strong>Documents:</strong> <span id="docCount">0</span></div>
+                <div><strong>Text Chunks:</strong> <span id="chunkCount">0</span></div>
+                <div><strong>Ready for Queries:</strong> <span id="readyStatus">No</span></div>
+            </div>
+        </div>
+
+        <div class="chat-section">
+            <h2>💬 Ask Questions</h2>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="no-docs-message" id="noDocsMessage">
+                    Upload PDF documents first, then ask questions about their content!
+                </div>
+            </div>
+
+            <div class="query-input-container">
+                <input type="text" class="query-input" id="queryInput" 
+                       placeholder="Ask a question about your uploaded documents..."
+                       disabled>
+                <button class="btn" id="askButton" disabled>Ask</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let documentStore = [];
+        let textChunks = [];
+        let embeddings = [];
+        let isProcessing = false;
+
+        // PDF.js worker setup
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // DOM elements
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const chatMessages = document.getElementById('chatMessages');
+        const queryInput = document.getElementById('queryInput');
+        const askButton = document.getElementById('askButton');
+        const stats = document.getElementById('stats');
+        const docCount = document.getElementById('docCount');
+        const chunkCount = document.getElementById('chunkCount');
+        const readyStatus = document.getElementById('readyStatus');
+        const noDocsMessage = document.getElementById('noDocsMessage');
+
+        // Upload zone event listeners
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', handleDragOver);
+        uploadZone.addEventListener('drop', handleDrop);
+        uploadZone.addEventListener('dragleave', handleDragLeave);
+        
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        
+        // Query handling
+        askButton.addEventListener('click', handleQuery);
+        queryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !askButton.disabled) {
+                handleQuery();
+            }
+        });
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        }
+
+        async function handleFiles(files) {
+            if (isProcessing) return;
+            
+            const pdfFiles = Array.from(files).filter(file => file.type === 'application/pdf');
+            if (pdfFiles.length === 0) {
+                alert('Please upload PDF files only.');
+                return;
+            }
+
+            for (const file of pdfFiles) {
+                await processFile(file);
+            }
+        }
+
+        async function processFile(file) {
+            isProcessing = true;
+            const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Add file to UI
+            addFileToList(fileId, file.name, 'processing');
+            
+            try {
+                // Extract text from PDF
+                const text = await extractTextFromPDF(file);
+                if (!text.trim()) {
+                    throw new Error('No readable text found in PDF');
+                }
+
+                // Chunk the text
+                const chunks = chunkText(text, 500, 50); // 500 chars per chunk with 50 char overlap
+                
+                // Generate simple embeddings (bag of words)
+                const docEmbeddings = chunks.map(chunk => generateSimpleEmbedding(chunk));
+                
+                // Store document data
+                const docData = {
+                    id: fileId,
+                    name: file.name,
+                    text: text,
+                    chunks: chunks,
+                    embeddings: docEmbeddings
+                };
+
+                documentStore.push(docData);
+                textChunks.push(...chunks.map((chunk, index) => ({
+                    text: chunk,
+                    source: file.name,
+                    docId: fileId,
+                    chunkId: index
+                })));
+                embeddings.push(...docEmbeddings);
+
+                updateFileStatus(fileId, 'ready');
+                updateStats();
+                
+                // Enable query interface if this is the first document
+                if (documentStore.length === 1) {
+                    enableQueryInterface();
+                }
+
+            } catch (error) {
+                console.error('Error processing file:', error);
+                updateFileStatus(fileId, 'error');
+                alert(`Error processing ${file.name}: ${error.message}`);
+            }
+            
+            isProcessing = false;
+        }
+
+        async function extractTextFromPDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += `\\n\\nPage ${i}:\\n${pageText}`;
+            }
+
+            return fullText;
+        }
+
+        function chunkText(text, chunkSize = 500, overlap = 50) {
+            const chunks = [];
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+            
+            let currentChunk = '';
+            let currentSize = 0;
+
+            for (const sentence of sentences) {
+                const sentenceSize = sentence.trim().length;
+                
+                if (currentSize + sentenceSize > chunkSize && currentChunk.length > 0) {
+                    chunks.push(currentChunk.trim());
+                    
+                    // Create overlap by keeping the last part of the chunk
+                    const words = currentChunk.trim().split(' ');
+                    const overlapWords = words.slice(-Math.ceil(overlap / 6)); // Approximate word count for overlap
+                    currentChunk = overlapWords.join(' ') + ' ' + sentence.trim();
+                    currentSize = currentChunk.length;
+                } else {
+                    currentChunk += (currentChunk ? ' ' : '') + sentence.trim();
+                    currentSize = currentChunk.length;
+                }
+            }
+
+            if (currentChunk.trim()) {
+                chunks.push(currentChunk.trim());
+            }
+
+            return chunks.filter(chunk => chunk.length > 50); // Filter out very small chunks
+        }
+
+        function generateSimpleEmbedding(text) {
+            // Simple bag-of-words embedding with TF-IDF-like weighting
+            const words = text.toLowerCase()
+                .replace(/[^\w\s]/g, ' ')
+                .split(/\s+/)
+                .filter(word => word.length > 3);
+
+            const wordCounts = {};
+            words.forEach(word => {
+                wordCounts[word] = (wordCounts[word] || 0) + 1;
+            });
+
+            // Create a simple vector representation
+            const vocabulary = Object.keys(wordCounts);
+            const embedding = [];
+            
+            vocabulary.forEach(word => {
+                const tf = wordCounts[word] / words.length;
+                const idf = Math.log(1 + 1 / (wordCounts[word] || 1));
+                embedding.push(tf * idf);
+            });
+
+            return {
+                vector: embedding,
+                vocabulary: vocabulary,
+                text: text
+            };
+        }
+
+        function cosineSimilarity(embedding1, embedding2) {
+            const vocab1 = new Set(embedding1.vocabulary);
+            const vocab2 = new Set(embedding2.vocabulary);
+            const commonVocab = [...vocab1].filter(word => vocab2.has(word));
+
+            if (commonVocab.length === 0) return 0;
+
+            let dotProduct = 0;
+            let norm1 = 0;
+            let norm2 = 0;
+
+            commonVocab.forEach(word => {
+                const idx1 = embedding1.vocabulary.indexOf(word);
+                const idx2 = embedding2.vocabulary.indexOf(word);
+                
+                if (idx1 >= 0 && idx2 >= 0) {
+                    const val1 = embedding1.vector[idx1] || 0;
+                    const val2 = embedding2.vector[idx2] || 0;
+                    
+                    dotProduct += val1 * val2;
+                    norm1 += val1 * val1;
+                    norm2 += val2 * val2;
+                }
+            });
+
+            if (norm1 === 0 || norm2 === 0) return 0;
+            return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+        }
+
+        async function handleQuery() {
+            const query = queryInput.value.trim();
+            if (!query || documentStore.length === 0) return;
+
+            // Add user message
+            addMessage(query, 'user');
+            queryInput.value = '';
+            
+            // Show loading
+            const loadingId = addMessage('<div class="loading"></div> Searching documents...', 'ai');
+            
+            try {
+                // Generate embedding for query
+                const queryEmbedding = generateSimpleEmbedding(query);
+                
+                // Find most relevant chunks
+                const similarities = textChunks.map((chunk, index) => ({
+                    chunk: chunk,
+                    embedding: embeddings[index],
+                    similarity: cosineSimilarity(queryEmbedding, embeddings[index])
+                }));
+
+                similarities.sort((a, b) => b.similarity - a.similarity);
+                
+                // Get top 3 most relevant chunks
+                const relevantChunks = similarities.slice(0, 3).filter(item => item.similarity > 0.1);
+                
+                if (relevantChunks.length === 0) {
+                    updateMessage(loadingId, "I couldn't find relevant information in the uploaded documents for your question. Please try rephrasing your query or make sure the documents contain information related to your question.", 'ai');
+                    return;
+                }
+
+                // Generate answer using RAG approach
+                const context = relevantChunks.map(item => item.chunk.text).join('\\n\\n');
+                const answer = generateAnswer(query, context);
+                
+                // Prepare source information
+                const sources = [...new Set(relevantChunks.map(item => item.chunk.source))].join(', ');
+                const sourceInfo = `\\n\\n**Sources:** ${sources}`;
+                
+                updateMessage(loadingId, answer + sourceInfo, 'ai');
+
+            } catch (error) {
+                console.error('Error processing query:', error);
+                updateMessage(loadingId, 'Sorry, there was an error processing your query. Please try again.', 'ai');
+            }
+        }
+
+        function generateAnswer(query, context) {
+            // Simple extractive QA approach
+            const queryWords = query.toLowerCase().split(/\s+/);
+            const contextSentences = context.split(/[.!?]+/).filter(s => s.trim().length > 10);
+            
+            // Score sentences based on query word overlap
+            const scoredSentences = contextSentences.map(sentence => {
+                const sentenceWords = sentence.toLowerCase().split(/\s+/);
+                const overlap = queryWords.filter(word => sentenceWords.some(sw => sw.includes(word) || word.includes(sw))).length;
+                const score = overlap / queryWords.length;
+                
+                return {
+                    sentence: sentence.trim(),
+                    score: score
+                };
+            });
+
+            // Get the best sentences
+            scoredSentences.sort((a, b) => b.score - a.score);
+            const bestSentences = scoredSentences.slice(0, 3).filter(item => item.score > 0);
+            
+            if (bestSentences.length === 0) {
+                return "Based on the uploaded documents, I couldn't find a direct answer to your question. The documents might not contain the specific information you're looking for.";
+            }
+
+            let answer = "Based on the uploaded documents:\\n\\n";
+            answer += bestSentences.map(item => `• ${item.sentence}`).join('\\n\\n');
+            
+            return answer;
+        }
+
+        function addFileToList(fileId, fileName, status) {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.id = `file-${fileId}`;
+            fileItem.innerHTML = `
+                <div class="file-name" title="${fileName}">${fileName}</div>
+                <div class="file-status status-${status}" id="status-${fileId}">
+                    ${status === 'processing' ? 'Processing...' : status === 'ready' ? 'Ready' : 'Error'}
+                </div>
+            `;
+            fileList.appendChild(fileItem);
+        }
+
+        function updateFileStatus(fileId, status) {
+            const statusElement = document.getElementById(`status-${fileId}`);
+            if (statusElement) {
+                statusElement.className = `file-status status-${status}`;
+                statusElement.textContent = status === 'processing' ? 'Processing...' : 
+                                           status === 'ready' ? 'Ready' : 'Error';
+            }
+        }
+
+        function updateStats() {
+            const totalChunks = textChunks.length;
+            const readyDocs = documentStore.length;
+            
+            docCount.textContent = readyDocs;
+            chunkCount.textContent = totalChunks;
+            readyStatus.textContent = readyDocs > 0 ? 'Yes' : 'No';
+            
+            if (readyDocs > 0) {
+                stats.style.display = 'block';
+            }
+        }
+
+        function enableQueryInterface() {
+            queryInput.disabled = false;
+            askButton.disabled = false;
+            noDocsMessage.style.display = 'none';
+            
+            // Add welcome message
+            addMessage("📚 Documents are ready! You can now ask questions about the content of your uploaded PDF files.", 'ai');
+        }
+
+        function addMessage(content, sender) {
+            const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const message = document.createElement('div');
+            message.className = `message ${sender}`;
+            message.id = messageId;
+            message.innerHTML = `<div class="message-content">${content}</div>`;
+            
+            chatMessages.appendChild(message);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageId;
+        }
+
+        function updateMessage(messageId, content, sender) {
+            const message = document.getElementById(messageId);
+            if (message) {
+                message.innerHTML = `<div class="message-content">${content}</div>`;
+                message.className = `message ${sender}`;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>
